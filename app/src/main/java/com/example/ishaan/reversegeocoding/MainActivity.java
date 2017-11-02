@@ -1,21 +1,21 @@
 package com.example.ishaan.reversegeocoding;
 
 import android.Manifest;
+import android.app.Activity;
 import android.app.ProgressDialog;
 import android.content.Context;
-import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.IntentSender;
 import android.content.pm.PackageManager;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
 import android.os.Build;
 import android.os.Bundle;
-import android.provider.Settings;
 import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.ContextCompat;
-import android.support.v7.app.AlertDialog;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
 import android.view.View;
@@ -28,16 +28,25 @@ import com.android.volley.Response;
 import com.android.volley.VolleyError;
 import com.android.volley.toolbox.JsonObjectRequest;
 import com.android.volley.toolbox.Volley;
+import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.GooglePlayServicesNotAvailableException;
 import com.google.android.gms.common.GooglePlayServicesRepairableException;
+import com.google.android.gms.common.api.GoogleApiClient;
+import com.google.android.gms.common.api.PendingResult;
+import com.google.android.gms.common.api.ResultCallback;
 import com.google.android.gms.common.api.Status;
+import com.google.android.gms.location.LocationRequest;
+import com.google.android.gms.location.LocationServices;
+import com.google.android.gms.location.LocationSettingsRequest;
+import com.google.android.gms.location.LocationSettingsResult;
+import com.google.android.gms.location.LocationSettingsStatusCodes;
 import com.google.android.gms.location.places.Place;
 import com.google.android.gms.location.places.ui.PlaceAutocomplete;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-public class MainActivity extends AppCompatActivity {
+public class MainActivity extends AppCompatActivity implements GoogleApiClient.ConnectionCallbacks, GoogleApiClient.OnConnectionFailedListener {
 
     RequestQueue requestQueue;
     TextView textTV,textTV0;
@@ -54,6 +63,12 @@ public class MainActivity extends AppCompatActivity {
     String locality = "", city, state, country, postalCode;
 
     public static final Integer PLACE_AUTOCOMPLETE_REQUEST_CODE = 1001;
+
+    GoogleApiClient mGoogleApiClient;
+    LocationRequest mLocationRequest;
+
+    public static final Integer REQUEST_CHECK_SETTINGS = 888;
+    public static final String TAG = "locationsettings";
 
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
@@ -79,6 +94,14 @@ public class MainActivity extends AppCompatActivity {
         textTV0= (TextView) findViewById(R.id.text0);
         btn= (Button) findViewById(R.id.button);
         btn2 = (Button) findViewById(R.id.button2);
+
+        mGoogleApiClient = new GoogleApiClient.Builder(this)
+                .addConnectionCallbacks(this)
+                .addOnConnectionFailedListener(this)
+                .addApi(LocationServices.API)
+                .build();
+
+        mLocationRequest = new LocationRequest();
 
         btn.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -108,27 +131,70 @@ public class MainActivity extends AppCompatActivity {
 
         }
         if( !network_enabled) {
-            // notify user
-            progressDialog.dismiss();
-            final AlertDialog.Builder alertDialogBuider = new AlertDialog.Builder(MainActivity.this);
-            alertDialogBuider.setMessage("Location is not on..");
 
-            alertDialogBuider.setNegativeButton(R.string.yes, new DialogInterface.OnClickListener() {
+            GoogleApiClient googleApiClient = new GoogleApiClient.Builder(MainActivity.this)
+                    .addApi(LocationServices.API).build();
+            googleApiClient.connect();
+
+            LocationRequest locationRequest = LocationRequest.create();
+            locationRequest.setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY);
+            locationRequest.setInterval(10000);
+            locationRequest.setFastestInterval(10000 / 2);
+
+            LocationSettingsRequest.Builder builder = new LocationSettingsRequest.Builder().addLocationRequest(locationRequest);
+            builder.setAlwaysShow(true);
+
+            PendingResult<LocationSettingsResult> result = LocationServices.SettingsApi.checkLocationSettings(googleApiClient, builder.build());
+            result.setResultCallback(new ResultCallback<LocationSettingsResult>() {
                 @Override
-                public void onClick(DialogInterface dialogInterface, int i) {
-                    Intent myIntent = new Intent( Settings.ACTION_LOCATION_SOURCE_SETTINGS);
-                    getApplicationContext().startActivity(myIntent);
+                public void onResult(LocationSettingsResult result) {
+                    final Status status = result.getStatus();
+                    switch (status.getStatusCode()) {
+                        case LocationSettingsStatusCodes.SUCCESS:
+                            Log.i(TAG, "All location settings are satisfied.");
+                            break;
+                        case LocationSettingsStatusCodes.RESOLUTION_REQUIRED:
+                            Log.i(TAG, "Location settings are not satisfied. Show the user a dialog to upgrade location settings ");
+
+                            try {
+                                // Show the dialog by calling startResolutionForResult(), and check the result
+                                // in onActivityResult().
+                                progressDialog.dismiss();
+                                status.startResolutionForResult(MainActivity.this, REQUEST_CHECK_SETTINGS);
+                            } catch (IntentSender.SendIntentException e) {
+                                Log.i(TAG, "PendingIntent unable to execute request.");
+                            }
+                            break;
+                        case LocationSettingsStatusCodes.SETTINGS_CHANGE_UNAVAILABLE:
+                            Log.i(TAG, "Location settings are inadequate, and cannot be fixed here. Dialog not created.");
+                            Toast.makeText(MainActivity.this, "Turn on Location", Toast.LENGTH_SHORT).show();
+                            progressDialog.dismiss();
+                            break;
+                    }
                 }
             });
-            alertDialogBuider.setPositiveButton(R.string.no, new DialogInterface.OnClickListener() {
-                @Override
-                public void onClick(DialogInterface dialogInterface, int i) {
-                    Toast.makeText(MainActivity.this, "Rejected ..!", Toast.LENGTH_SHORT).show();
 
-                }
-
-            });
-            alertDialogBuider.show();
+//            // notify user
+//            progressDialog.dismiss();
+//            final AlertDialog.Builder alertDialogBuider = new AlertDialog.Builder(MainActivity.this);
+//            alertDialogBuider.setMessage("Location is not on..");
+//
+//            alertDialogBuider.setNegativeButton(R.string.yes, new DialogInterface.OnClickListener() {
+//                @Override
+//                public void onClick(DialogInterface dialogInterface, int i) {
+//                    Intent myIntent = new Intent( Settings.ACTION_LOCATION_SOURCE_SETTINGS);
+//                    getApplicationContext().startActivity(myIntent);
+//                }
+//            });
+//            alertDialogBuider.setPositiveButton(R.string.no, new DialogInterface.OnClickListener() {
+//                @Override
+//                public void onClick(DialogInterface dialogInterface, int i) {
+//                    Toast.makeText(MainActivity.this, "Rejected ..!", Toast.LENGTH_SHORT).show();
+//
+//                }
+//
+//            });
+//            alertDialogBuider.show();
         }
         locationListener=new LocationListener() {
             @Override
@@ -278,5 +344,64 @@ public class MainActivity extends AppCompatActivity {
             else if (resultCode == RESULT_CANCELED) {
             }
         }
+        else if (requestCode == 12321) {
+            switch (resultCode) {
+                case Activity.RESULT_OK:
+                    if (mGoogleApiClient.isConnected()) {
+                        fetchLocation();
+                    }
+                    break;
+                case Activity.RESULT_CANCELED:
+                    // The user was asked to change settings, but chose not to
+                    break;
+                default:
+                    break;
+            }
+        }
+    }
+
+    private ResultCallback<LocationSettingsResult> mResultCallbackFromSettings = new ResultCallback<LocationSettingsResult>() {
+        @Override
+        public void onResult(LocationSettingsResult result) {
+            final Status status = result.getStatus();
+            //final LocationSettingsStates locationSettingsStates = result.getLocationSettingsStates();
+            switch (status.getStatusCode()) {
+                case LocationSettingsStatusCodes.SUCCESS:
+                    // All location settings are satisfied. The client can initialize location
+                    // requests here.
+                    break;
+                case LocationSettingsStatusCodes.RESOLUTION_REQUIRED:
+                    // Location settings are not satisfied. But could be fixed by showing the user
+                    // a dialog.
+                    try {
+                        // Show the dialog by calling startResolutionForResult(),
+                        // and check the result in onActivityResult().
+                        status.startResolutionForResult(
+                                MainActivity.this,
+                                12321);
+                    } catch (IntentSender.SendIntentException e) {
+                        // Ignore the error.
+                    }
+                    break;
+                case LocationSettingsStatusCodes.SETTINGS_CHANGE_UNAVAILABLE:
+                    Log.e("TAG", "Settings change unavailable. We have no way to fix the settings so we won't show the dialog.");
+                    break;
+            }
+        }
+    };
+
+    @Override
+    public void onConnected(@Nullable Bundle bundle) {
+
+    }
+
+    @Override
+    public void onConnectionSuspended(int i) {
+
+    }
+
+    @Override
+    public void onConnectionFailed(@NonNull ConnectionResult connectionResult) {
+
     }
 }
