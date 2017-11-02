@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">Reverse GeoCoding</string>
+    <string name="app_name">Address Finder</string>
     <string name="yes">Turn On Location</string>
     <string name="no">Cancel</string>
 </resources>

@@ -28,7 +28,13 @@ import com.android.volley.Response;
 import com.android.volley.VolleyError;
 import com.android.volley.toolbox.JsonObjectRequest;
 import com.android.volley.toolbox.Volley;
+import com.google.android.gms.common.GooglePlayServicesNotAvailableException;
+import com.google.android.gms.common.GooglePlayServicesRepairableException;
+import com.google.android.gms.common.api.Status;
+import com.google.android.gms.location.places.Place;
+import com.google.android.gms.location.places.ui.PlaceAutocomplete;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 public class MainActivity extends AppCompatActivity {
@@ -41,8 +47,13 @@ public class MainActivity extends AppCompatActivity {
     Double longitude;
     String latStr="",longStr="";
     boolean network_enabled=false;
-    Button btn;
+    Button btn, btn2;
     ProgressDialog progressDialog;
+    Boolean locationFound = false;
+
+    String locality = "", city, state, country, postalCode;
+
+    public static final Integer PLACE_AUTOCOMPLETE_REQUEST_CODE = 1001;
 
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
@@ -67,19 +78,24 @@ public class MainActivity extends AppCompatActivity {
         textTV= (TextView) findViewById(R.id.text);
         textTV0= (TextView) findViewById(R.id.text0);
         btn= (Button) findViewById(R.id.button);
+        btn2 = (Button) findViewById(R.id.button2);
 
         btn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
+                locationFound = false;
                 fetchLocation();
             }
         });
-
-
+        btn2.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                findPlace();
+            }
+        });
     }
 
     private void fetchLocation() {
-        requestQueue = Volley.newRequestQueue(this);
 
         locationManager= (LocationManager) getSystemService(Context.LOCATION_SERVICE);
         progressDialog = new ProgressDialog(MainActivity.this);
@@ -118,15 +134,18 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onLocationChanged(Location location) {
 
-                Log.d("TAG", "onLocationChanged: "+location.toString());
-                latitude=location.getLatitude();
-                longitude=location.getLongitude();
+                if (!locationFound) {
+                    Log.d("TAG", "onLocationChanged: " + location.toString());
+                    latitude = location.getLatitude();
+                    longitude = location.getLongitude();
 
-                latStr=String.valueOf(latitude);
-                longStr=String.valueOf(longitude);
-                textTV0.setText(latStr+" , "+longStr);
-                progressDialog.dismiss();
-                VolleyFunction(latStr,longStr);
+                    latStr = String.valueOf(latitude);
+                    longStr = String.valueOf(longitude);
+                    textTV0.setText(latStr + " , " + longStr);
+                    progressDialog.dismiss();
+                    locationFound = true;
+                    VolleyFunction(latStr, longStr);
+                }
             }
 
             @Override
@@ -173,8 +192,38 @@ public class MainActivity extends AppCompatActivity {
                     public void onResponse(JSONObject response) {
                         try
                         {
-                            Log.d("response", "onResponse: " + response.toString());
-                            textTV.setText(response.toString());
+                            JSONArray jsonArray = response.getJSONArray("results").getJSONObject(0).getJSONArray("address_components");
+                            for (Integer i=0;i<jsonArray.length();i++) {
+                                if (jsonArray.getJSONObject(i).getString("types").equals("[\"locality\",\"political\"]")) {
+                                    city = jsonArray.getJSONObject(i).getString("long_name");
+                                }
+                                else if (jsonArray.getJSONObject(i).getString("types").equals("[\"administrative_area_level_1\",\"political\"]")) {
+                                    state = jsonArray.getJSONObject(i).getString("long_name");
+                                }
+                                else if (jsonArray.getJSONObject(i).getString("types").equals("[\"country\",\"political\"]")) {
+                                    country = jsonArray.getJSONObject(i).getString("long_name");
+                                }
+                                else if (jsonArray.getJSONObject(i).getString("types").equals("[\"postal_code\"]")) {
+                                    postalCode = jsonArray.getJSONObject(i).getString("long_name");
+                                }
+                                else {
+                                    locality = locality + jsonArray.getJSONObject(i).getString("long_name") + " ";
+                                }
+                            }
+                            Log.d("checkkkk", "onResponse: " + city);
+                            Log.d("checkkkk", "onResponse: " + state);
+                            Log.d("checkkkk", "onResponse: " + country);
+                            Log.d("checkkkk", "onResponse: " + postalCode);
+                            Log.d("checkkkk", "onResponse: " + locality);
+
+                            String result = "";
+                            result = result + "Locality : " + locality + "\n";
+                            result = result + "City : " + city + "\n";
+                            result = result + "State : " + state + "\n";
+                            result = result + "Country : " + country + "\n";
+                            result = result + "Postal Code : " + postalCode;
+//                            result = result + "\nFull Address : " + response.getJSONArray("results").getJSONObject(0).getString("formatted_address");
+                            textTV.setText(result);
                         }
                         catch (Exception e)
                         {
@@ -190,7 +239,42 @@ public class MainActivity extends AppCompatActivity {
                         Toast.makeText(MainActivity.this, "Error Found", Toast.LENGTH_SHORT).show();
                     }
                 });
+        requestQueue = Volley.newRequestQueue(MainActivity.this);
         requestQueue.add(jsonObjectRequest);
     }
 
+    public void findPlace() {
+        try {
+            Intent intent =
+                    new PlaceAutocomplete.IntentBuilder(PlaceAutocomplete.MODE_FULLSCREEN)
+                            .build(this);
+            startActivityForResult(intent, PLACE_AUTOCOMPLETE_REQUEST_CODE);
+        } catch (GooglePlayServicesRepairableException e) {
+
+        } catch (GooglePlayServicesNotAvailableException e) {
+        }
+    }
+
+    @Override
+    public void onActivityResult(int requestCode, int resultCode, Intent data) {
+        if (requestCode == PLACE_AUTOCOMPLETE_REQUEST_CODE) {
+            if (resultCode == RESULT_OK) {
+                Place place = PlaceAutocomplete.getPlace(this, data);
+
+                latStr=String.valueOf(place.getLatLng().latitude);
+                longStr=String.valueOf(place.getLatLng().longitude);
+                textTV0.setText(latStr+" , "+longStr);
+
+                VolleyFunction(latStr, longStr);
+
+            }
+            else if (resultCode == PlaceAutocomplete.RESULT_ERROR) {
+                Status status = PlaceAutocomplete.getStatus(this, data);
+                Log.i("TAG", status.getStatusMessage());
+
+            }
+            else if (resultCode == RESULT_CANCELED) {
+            }
+        }
+    }
 }
