@@ -192,6 +192,8 @@ public class MainActivity extends AppCompatActivity {
                     public void onResponse(JSONObject response) {
                         try
                         {
+                            locality = "";
+                            textTV.setText("");
                             JSONArray jsonArray = response.getJSONArray("results").getJSONObject(0).getJSONArray("address_components");
                             for (Integer i=0;i<jsonArray.length();i++) {
                                 if (jsonArray.getJSONObject(i).getString("types").equals("[\"locality\",\"political\"]")) {
