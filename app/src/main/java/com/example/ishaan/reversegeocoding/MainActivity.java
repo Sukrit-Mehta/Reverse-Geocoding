@@ -8,7 +8,6 @@ import android.content.Intent;
 import android.content.IntentSender;
 import android.content.pm.PackageManager;
 import android.location.Location;
-import android.location.LocationListener;
 import android.location.LocationManager;
 import android.os.Build;
 import android.os.Bundle;
@@ -31,10 +30,13 @@ import com.android.volley.toolbox.Volley;
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.GooglePlayServicesNotAvailableException;
 import com.google.android.gms.common.GooglePlayServicesRepairableException;
+import com.google.android.gms.common.GooglePlayServicesUtil;
 import com.google.android.gms.common.api.GoogleApiClient;
 import com.google.android.gms.common.api.PendingResult;
 import com.google.android.gms.common.api.ResultCallback;
 import com.google.android.gms.common.api.Status;
+import com.google.android.gms.location.FusedLocationProviderApi;
+import com.google.android.gms.location.LocationListener;
 import com.google.android.gms.location.LocationRequest;
 import com.google.android.gms.location.LocationServices;
 import com.google.android.gms.location.LocationSettingsRequest;
@@ -46,16 +48,17 @@ import com.google.android.gms.location.places.ui.PlaceAutocomplete;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-public class MainActivity extends AppCompatActivity implements GoogleApiClient.ConnectionCallbacks, GoogleApiClient.OnConnectionFailedListener {
+public class MainActivity extends AppCompatActivity implements GoogleApiClient.ConnectionCallbacks, GoogleApiClient.OnConnectionFailedListener, LocationListener {
 
     RequestQueue requestQueue;
-    TextView textTV,textTV0;
-    LocationManager locationManager;LocationListener locationListener;
+    TextView textTV, textTV0;
+    LocationManager locationManager;
+    android.location.LocationListener locationListener;
 
     Double latitude;
     Double longitude;
-    String latStr="",longStr="";
-    boolean network_enabled=false;
+    String latStr = "", longStr = "";
+    boolean network_enabled = false;
     Button btn, btn2;
     ProgressDialog progressDialog;
     Boolean locationFound = false;
@@ -66,20 +69,22 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
 
     GoogleApiClient mGoogleApiClient;
     LocationRequest mLocationRequest;
+    FusedLocationProviderApi fusedLocationProviderApi;
 
     public static final Integer REQUEST_CHECK_SETTINGS = 888;
     public static final String TAG = "locationsettings";
+    private static final long INTERVAL = 1000 * 10;
+    private static final long FASTEST_INTERVAL = 1000 * 5;
 
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
 
-        Log.i("TAG","sabse Upar");
-        Log.i("TAG","LEN:" +grantResults);
-        if(grantResults.length>0 && grantResults[0]== PackageManager.PERMISSION_GRANTED)
-        {
-            if(ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)==PackageManager.PERMISSION_GRANTED) {
-                locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 0, 0, locationListener);
+        Log.i("TAG", "sabse Upar");
+        Log.i("TAG", "LEN:" + grantResults);
+        if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+//                locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 0, 0, locationListener);
             }
         }
     }
@@ -90,9 +95,9 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        textTV= (TextView) findViewById(R.id.text);
-        textTV0= (TextView) findViewById(R.id.text0);
-        btn= (Button) findViewById(R.id.button);
+        textTV = (TextView) findViewById(R.id.text);
+        textTV0 = (TextView) findViewById(R.id.text0);
+        btn = (Button) findViewById(R.id.button);
         btn2 = (Button) findViewById(R.id.button2);
 
         mGoogleApiClient = new GoogleApiClient.Builder(this)
@@ -102,6 +107,11 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
                 .build();
 
         mLocationRequest = new LocationRequest();
+        mLocationRequest.setInterval(INTERVAL);
+        mLocationRequest.setFastestInterval(FASTEST_INTERVAL);
+        mLocationRequest.setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY);
+
+        fusedLocationProviderApi = LocationServices.FusedLocationApi;
 
         btn.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -118,19 +128,28 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
         });
     }
 
+    private boolean isGooglePlayServicesAvailable() {
+        int status = GooglePlayServicesUtil.isGooglePlayServicesAvailable(this);
+        if (ConnectionResult.SUCCESS == status) {
+            return true;
+        } else {
+            GooglePlayServicesUtil.getErrorDialog(status, this, 0).show();
+            return false;
+        }
+    }
+
     private void fetchLocation() {
 
-        locationManager= (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+        locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
         progressDialog = new ProgressDialog(MainActivity.this);
         progressDialog.setMessage("Fetching your location....");
         progressDialog.show();
         try {
             network_enabled = locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER);
-        }catch (Exception e)
-        {
+        } catch (Exception e) {
 
         }
-        if( !network_enabled) {
+        if (!network_enabled) {
 
             GoogleApiClient googleApiClient = new GoogleApiClient.Builder(MainActivity.this)
                     .addApi(LocationServices.API).build();
@@ -196,39 +215,47 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
 //            });
 //            alertDialogBuider.show();
         }
-        locationListener=new LocationListener() {
-            @Override
-            public void onLocationChanged(Location location) {
 
-                if (!locationFound) {
-                    Log.d("TAG", "onLocationChanged: " + location.toString());
-                    latitude = location.getLatitude();
-                    longitude = location.getLongitude();
+//        mGoogleApiClient.connect();
+//
+//        if (mGoogleApiClient.isConnected()) {
+//            startLocationUpdates();
+//            Log.d(TAG, "Location update resumed .....................");
+//        }
 
-                    latStr = String.valueOf(latitude);
-                    longStr = String.valueOf(longitude);
-                    textTV0.setText(latStr + " , " + longStr);
-                    progressDialog.dismiss();
-                    locationFound = true;
-                    VolleyFunction(latStr, longStr);
-                }
-            }
-
-            @Override
-            public void onStatusChanged(String s, int i, Bundle bundle) {
-
-            }
-
-            @Override
-            public void onProviderEnabled(String s) {
-
-            }
-
-            @Override
-            public void onProviderDisabled(String s) {
-
-            }
-        };
+//        locationListener=new LocationListener() {
+//            @Override
+//            public void onLocationChanged(Location location) {
+//
+//                if (!locationFound) {
+//                    Log.d("TAG", "onLocationChanged: " + location.toString());
+//                    latitude = location.getLatitude();
+//                    longitude = location.getLongitude();
+//
+//                    latStr = String.valueOf(latitude);
+//                    longStr = String.valueOf(longitude);
+//                    textTV0.setText(latStr + " , " + longStr);
+//                    progressDialog.dismiss();
+//                    locationFound = true;
+//                    VolleyFunction(latStr, longStr);
+//                }
+//            }
+//
+//            @Override
+//            public void onStatusChanged(String s, int i, Bundle bundle) {
+//
+//            }
+//
+//            @Override
+//            public void onProviderEnabled(String s) {
+//
+//            }
+//
+//            @Override
+//            public void onProviderDisabled(String s) {
+//
+//            }
+//        };
 
         if (Build.VERSION.SDK_INT < 23) {
 
@@ -240,41 +267,41 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
                 ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, 1);
             } else {
                 Log.i("TAG", "Permission given");
-                locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER,
-                        20000, 100, locationListener);
+//                locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER,
+//                        20000, 100, locationListener);
+                mGoogleApiClient.connect();
+
+                if (mGoogleApiClient.isConnected()) {
+                    startLocationUpdates();
+                    Log.d(TAG, "Location update resumed .....................");
+                }
             }
         }
 
     }
 
-    void VolleyFunction(String lat,String lon)
-    {
-        Log.d("TAG","latFunc: "+lat);
-        Log.d("TAG","longFunc: "+lon);
-        JsonObjectRequest jsonObjectRequest = new JsonObjectRequest("https://maps.googleapis.com/maps/api/geocode/json?latlng="+lat+","+lon+"&key=AIzaSyDxYAN8Do0UI9ZMdBeDkfsYcQcG5qBfjQY",
+    void VolleyFunction(String lat, String lon) {
+        Log.d("TAG", "latFunc: " + lat);
+        Log.d("TAG", "longFunc: " + lon);
+        JsonObjectRequest jsonObjectRequest = new JsonObjectRequest("https://maps.googleapis.com/maps/api/geocode/json?latlng=" + lat + "," + lon + "&key=AIzaSyDxYAN8Do0UI9ZMdBeDkfsYcQcG5qBfjQY",
                 null,
                 new Response.Listener<JSONObject>() {
                     @Override
                     public void onResponse(JSONObject response) {
-                        try
-                        {
+                        try {
                             locality = "";
                             textTV.setText("");
                             JSONArray jsonArray = response.getJSONArray("results").getJSONObject(0).getJSONArray("address_components");
-                            for (Integer i=0;i<jsonArray.length();i++) {
+                            for (Integer i = 0; i < jsonArray.length(); i++) {
                                 if (jsonArray.getJSONObject(i).getString("types").equals("[\"locality\",\"political\"]")) {
                                     city = jsonArray.getJSONObject(i).getString("long_name");
-                                }
-                                else if (jsonArray.getJSONObject(i).getString("types").equals("[\"administrative_area_level_1\",\"political\"]")) {
+                                } else if (jsonArray.getJSONObject(i).getString("types").equals("[\"administrative_area_level_1\",\"political\"]")) {
                                     state = jsonArray.getJSONObject(i).getString("long_name");
-                                }
-                                else if (jsonArray.getJSONObject(i).getString("types").equals("[\"country\",\"political\"]")) {
+                                } else if (jsonArray.getJSONObject(i).getString("types").equals("[\"country\",\"political\"]")) {
                                     country = jsonArray.getJSONObject(i).getString("long_name");
-                                }
-                                else if (jsonArray.getJSONObject(i).getString("types").equals("[\"postal_code\"]")) {
+                                } else if (jsonArray.getJSONObject(i).getString("types").equals("[\"postal_code\"]")) {
                                     postalCode = jsonArray.getJSONObject(i).getString("long_name");
-                                }
-                                else {
+                                } else {
                                     locality = locality + jsonArray.getJSONObject(i).getString("long_name") + " ";
                                 }
                             }
@@ -292,10 +319,8 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
                             result = result + "Postal Code : " + postalCode;
 //                            result = result + "\nFull Address : " + response.getJSONArray("results").getJSONObject(0).getString("formatted_address");
                             textTV.setText(result);
-                        }
-                        catch (Exception e)
-                        {
-                            Toast.makeText(MainActivity.this,e.getMessage(), Toast.LENGTH_SHORT).show();
+                        } catch (Exception e) {
+                            Toast.makeText(MainActivity.this, e.getMessage(), Toast.LENGTH_SHORT).show();
                         }
                     }
                 },
@@ -303,7 +328,7 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
                     @Override
                     public void onErrorResponse(VolleyError error) {
                         Toast.makeText(MainActivity.this, error.toString(), Toast.LENGTH_SHORT).show();
-                        Log.d("Yo", "onErrorResponse: "+ error.toString());
+                        Log.d("Yo", "onErrorResponse: " + error.toString());
                         Toast.makeText(MainActivity.this, "Error Found", Toast.LENGTH_SHORT).show();
                     }
                 });
@@ -329,22 +354,19 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
             if (resultCode == RESULT_OK) {
                 Place place = PlaceAutocomplete.getPlace(this, data);
 
-                latStr=String.valueOf(place.getLatLng().latitude);
-                longStr=String.valueOf(place.getLatLng().longitude);
-                textTV0.setText(latStr+" , "+longStr);
+                latStr = String.valueOf(place.getLatLng().latitude);
+                longStr = String.valueOf(place.getLatLng().longitude);
+                textTV0.setText(latStr + " , " + longStr);
 
                 VolleyFunction(latStr, longStr);
 
-            }
-            else if (resultCode == PlaceAutocomplete.RESULT_ERROR) {
+            } else if (resultCode == PlaceAutocomplete.RESULT_ERROR) {
                 Status status = PlaceAutocomplete.getStatus(this, data);
                 Log.i("TAG", status.getStatusMessage());
 
+            } else if (resultCode == RESULT_CANCELED) {
             }
-            else if (resultCode == RESULT_CANCELED) {
-            }
-        }
-        else if (requestCode == 12321) {
+        } else if (requestCode == 12321) {
             switch (resultCode) {
                 case Activity.RESULT_OK:
                     if (mGoogleApiClient.isConnected()) {
@@ -391,6 +413,27 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
     };
 
     @Override
+    protected void onPause() {
+        super.onPause();
+//        stopLocationUpdates();
+    }
+
+//    protected void stopLocationUpdates() {
+//        LocationServices.FusedLocationApi.removeLocationUpdates(
+//                mGoogleApiClient, this);
+//        Log.d(TAG, "Location update stopped .......................");
+//    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        if (mGoogleApiClient.isConnected()) {
+            startLocationUpdates();
+            Log.d(TAG, "Location update resumed .....................");
+        }
+    }
+
+    @Override
     public void onConnected(@Nullable Bundle bundle) {
 
     }
@@ -403,5 +446,27 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
     @Override
     public void onConnectionFailed(@NonNull ConnectionResult connectionResult) {
 
+    }
+
+    @Override
+    public void onLocationChanged(Location location) {
+        progressDialog.dismiss();
+        if (!locationFound) {
+            latitude = location.getLatitude();
+            longitude = location.getLongitude();
+            latStr = String.valueOf(latitude);
+            longStr = String.valueOf(longitude);
+            textTV0.setText(latStr + " , " + longStr);
+            progressDialog.dismiss();
+            locationFound = true;
+            VolleyFunction(latStr, longStr);
+        }
+    }
+
+    protected void startLocationUpdates() {
+        //noinspection MissingPermission
+        PendingResult<Status> pendingResult = LocationServices.FusedLocationApi.requestLocationUpdates(
+                mGoogleApiClient, mLocationRequest, this);
+        Log.d(TAG, "Location update started ..............: ");
     }
 }
